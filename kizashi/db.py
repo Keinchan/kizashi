@@ -64,6 +64,21 @@ CREATE TABLE IF NOT EXISTS enrich_attempts (
     last_error TEXT,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- LINE ダイジェスト: 通知済みURL (正規化済み) → 重複通知の防止に必須。
+CREATE TABLE IF NOT EXISTS notified (
+    normalized_url TEXT PRIMARY KEY,
+    title          TEXT,
+    notified_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- LINE ダイジェスト: 生成した本文の履歴 (振り返り・精度改善用)。
+CREATE TABLE IF NOT EXISTS digests (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    body       TEXT NOT NULL,
+    item_ids   TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 
@@ -81,8 +96,7 @@ class Storage:
     def _migrate(self) -> None:
         """既存DBに後付けした列を安全に追加 (走りながら直す方針)。"""
         cols = {
-            row["name"]
-            for row in self.conn.execute("PRAGMA table_info(enrichments)").fetchall()
+            row["name"] for row in self.conn.execute("PRAGMA table_info(enrichments)").fetchall()
         }
         if "agent_note" not in cols:
             self.conn.execute("ALTER TABLE enrichments ADD COLUMN agent_note TEXT")
@@ -225,6 +239,44 @@ class Storage:
 
     def enriched_count(self) -> int:
         return self.conn.execute("SELECT COUNT(*) FROM enrichments").fetchone()[0]
+
+    # --- LINE ダイジェスト ---
+
+    def digest_candidates(self, since_hours: int = 36, limit: int = 80) -> list[sqlite3.Row]:
+        """ダイジェスト厳選の候補を返す (直近収集・未通知)。
+
+        - ``since_hours`` 以内に収集したアイテムに限定 (当日の新着を狙う)。
+        - すでに ``notified`` にある正規化URLは除外 (重複通知防止)。
+        - スコア降順 → 新着順。スコアが無いソース(RSS/reddit_rss)も拾えるよう
+          NULLS LAST で並べる。
+        """
+        return self.conn.execute(
+            """
+            SELECT i.id, i.source, i.origin, i.title, i.url, i.normalized_url,
+                   i.score, i.comments, i.content, i.collected_at
+            FROM items i
+            LEFT JOIN notified n ON n.normalized_url = i.normalized_url
+            WHERE n.normalized_url IS NULL
+              AND i.collected_at >= datetime('now', ?)
+            ORDER BY i.score DESC NULLS LAST, i.collected_at DESC
+            LIMIT ?
+            """,
+            (f"-{int(since_hours)} hours", limit),
+        ).fetchall()
+
+    def mark_notified(self, normalized_url: str, title: str) -> None:
+        self.conn.execute(
+            "INSERT OR IGNORE INTO notified (normalized_url, title) VALUES (?, ?)",
+            (normalized_url, title),
+        )
+        self.conn.commit()
+
+    def save_digest(self, body: str, item_ids: list[str]) -> None:
+        self.conn.execute(
+            "INSERT INTO digests (body, item_ids) VALUES (?, ?)",
+            (body, ",".join(item_ids)),
+        )
+        self.conn.commit()
 
     def close(self) -> None:
         self.conn.close()

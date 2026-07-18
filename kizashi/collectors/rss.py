@@ -82,9 +82,7 @@ class RssCollector:
             print(f"  [rss] 取得できなかったフィード: {', '.join(dead)}")
         return items
 
-    async def _fetch_feed(
-        self, client: httpx.AsyncClient, name: str, url: str
-    ) -> list[Item]:
+    async def _fetch_feed(self, client: httpx.AsyncClient, name: str, url: str) -> list[Item]:
         resp = await client.get(url)
         resp.raise_for_status()
         feed = await asyncio.to_thread(feedparser.parse, resp.content)

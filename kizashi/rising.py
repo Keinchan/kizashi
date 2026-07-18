@@ -26,15 +26,31 @@ from .db import DEFAULT_DB_PATH, Storage
 from .report import _EN_STOP, _EN_WORD_RE, _JP_RE, _ja_nouns
 
 WINDOW_HOURS = 48
-MIN_RECENT_NEW = 4      # 完全新規ワードの最低出現
-MIN_RECENT_RISE = 6     # 急上昇ワードの最低出現
-MIN_LIFT = 1.6          # 急上昇と見なす平常比の下限
+MIN_RECENT_NEW = 4  # 完全新規ワードの最低出現
+MIN_RECENT_RISE = 6  # 急上昇ワードの最低出現
+MIN_LIFT = 1.6  # 急上昇と見なす平常比の下限
 AMBER = "#f0883e"
 BLUE = "#58a6ff"
 
 # report.py の汎用ストップに加え、Rising 特有のノイズ語を軽く除去。
-EXTRA_STOP = {"own", "non", "pre", "sub", "per", "off", "yet", "let",
-              "www", "http", "https", "com", "org", "net", "app", "apps"}
+EXTRA_STOP = {
+    "own",
+    "non",
+    "pre",
+    "sub",
+    "per",
+    "off",
+    "yet",
+    "let",
+    "www",
+    "http",
+    "https",
+    "com",
+    "org",
+    "net",
+    "app",
+    "apps",
+}
 
 
 def _norm(w: str) -> str:
@@ -131,23 +147,32 @@ def build_rising_html(db_path: Path | str = DEFAULT_DB_PATH, window: int = WINDO
 
     # --- HTML 組み立て ---
     rise_max = max((n for _, n, _ in rising), default=1)
-    rise_html = "".join(
-        _bar(disp(k), 100 * n / rise_max, str(n), AMBER, chip=f"×{lift:.0f}")
-        for k, n, lift in rising
-    ) or "<p class='muted'>該当なし</p>"
+    rise_html = (
+        "".join(
+            _bar(disp(k), 100 * n / rise_max, str(n), AMBER, chip=f"×{lift:.0f}")
+            for k, n, lift in rising
+        )
+        or "<p class='muted'>該当なし</p>"
+    )
 
-    new_html = "".join(
-        f"<span class='tag new'>{html.escape(disp(k))}<span class='tag-n'>{n}</span></span>"
-        for k, n in brand_new
-    ) or "<p class='muted'>該当なし</p>"
+    new_html = (
+        "".join(
+            f"<span class='tag new'>{html.escape(disp(k))}<span class='tag-n'>{n}</span></span>"
+            for k, n in brand_new
+        )
+        or "<p class='muted'>該当なし</p>"
+    )
 
-    hl_html = "".join(
-        f"<tr><td class='num'>{h['score'] if h['score'] is not None else '—'}</td>"
-        f"<td><span class='tag'>{html.escape(h['o'])}</span></td>"
-        f"<td><a href='{html.escape(h['url'])}' target='_blank' rel='noopener'>"
-        f"{html.escape(h['title'])}</a></td></tr>"
-        for h in highlights
-    ) or "<tr><td class='muted'>該当なし</td></tr>"
+    hl_html = (
+        "".join(
+            f"<tr><td class='num'>{h['score'] if h['score'] is not None else '—'}</td>"
+            f"<td><span class='tag'>{html.escape(h['o'])}</span></td>"
+            f"<td><a href='{html.escape(h['url'])}' target='_blank' rel='noopener'>"
+            f"{html.escape(h['title'])}</a></td></tr>"
+            for h in highlights
+        )
+        or "<tr><td class='muted'>該当なし</td></tr>"
+    )
 
     bmax = max((r["n"] for r in buckets), default=1)
     ts_html = "".join(
@@ -159,9 +184,10 @@ def build_rising_html(db_path: Path | str = DEFAULT_DB_PATH, window: int = WINDO
     )
 
     smax = max((r["n"] for r in by_source), default=1)
-    src_html = "".join(
-        _bar(r["source"], 100 * r["n"] / smax, str(r["n"]), BLUE) for r in by_source
-    ) or "<p class='muted'>該当なし</p>"
+    src_html = (
+        "".join(_bar(r["source"], 100 * r["n"] / smax, str(r["n"]), BLUE) for r in by_source)
+        or "<p class='muted'>該当なし</p>"
+    )
 
     return _TEMPLATE.format(
         window=int(window),

@@ -59,10 +59,7 @@ class XCollector:
 
         data = resp.json()
         # author_id → username の対応表
-        users = {
-            u["id"]: u.get("username", "")
-            for u in data.get("includes", {}).get("users", [])
-        }
+        users = {u["id"]: u.get("username", "") for u in data.get("includes", {}).get("users", [])}
         items: list[Item] = []
         for t in data.get("data", []):
             tid = t.get("id", "")

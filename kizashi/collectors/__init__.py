@@ -7,6 +7,7 @@ from .hackernews import HackerNewsCollector
 from .hf_papers import HuggingFacePapersCollector
 from .qiita import QiitaCollector
 from .reddit import RedditCollector
+from .reddit_rss import RedditRssCollector
 from .rss import RssCollector
 from .x import XCollector
 
@@ -18,6 +19,7 @@ __all__ = [
     "HuggingFacePapersCollector",
     "QiitaCollector",
     "RedditCollector",
+    "RedditRssCollector",
     "RssCollector",
     "XCollector",
 ]

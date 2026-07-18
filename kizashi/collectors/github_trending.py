@@ -49,9 +49,7 @@ class GitHubTrendingCollector:
         seen: set[str] = set()
         for since in self.ranges:
             try:
-                resp = await client.get(
-                    "https://github.com/trending", params={"since": since}
-                )
+                resp = await client.get("https://github.com/trending", params={"since": since})
                 resp.raise_for_status()
             except httpx.HTTPError:
                 continue

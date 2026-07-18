@@ -28,6 +28,7 @@ from .collectors import (
     HuggingFacePapersCollector,
     QiitaCollector,
     RedditCollector,
+    RedditRssCollector,
     RssCollector,
     XCollector,
 )
@@ -40,6 +41,7 @@ def _default_collectors(hn_limit: int, reddit_limit: int) -> list:
     return [
         HackerNewsCollector(limit=hn_limit),
         RedditCollector(limit=reddit_limit),
+        RedditRssCollector(),  # 承認までの暫定 (OAuth未設定でもReddit内容をRSSで確保)
         ArxivCollector(),
         RssCollector(),
         QiitaCollector(per_tag=100, pages=2),
@@ -63,9 +65,7 @@ async def _run(args: argparse.Namespace) -> None:
     with Storage(args.db) as store:
         inserted = store.upsert_many(all_items)
         total = store.count()
-        print(
-            f"      収集 {len(all_items)} 件 / 新規 {inserted} 件 / 総蓄積 {total} 件"
-        )
+        print(f"      収集 {len(all_items)} 件 / 新規 {inserted} 件 / 総蓄積 {total} 件")
 
         # 2. 抽出 (キーがあれば)
         print("\n[2/3] 抽出 ...")

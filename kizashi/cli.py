@@ -35,7 +35,14 @@ from .db import DEFAULT_DB_PATH, Storage
 from .schema import Item
 
 ALL_SOURCES = (
-    "hackernews", "reddit", "arxiv", "rss", "qiita", "x", "github", "hfpapers",
+    "hackernews",
+    "reddit",
+    "arxiv",
+    "rss",
+    "qiita",
+    "x",
+    "github",
+    "hfpapers",
 )
 
 
@@ -43,9 +50,7 @@ def build_collectors(args: argparse.Namespace) -> list:
     selected = args.only or ALL_SOURCES
     collectors = []
     if "hackernews" in selected:
-        collectors.append(
-            HackerNewsCollector(limit=args.hn_limit, ai_only=not args.hn_all)
-        )
+        collectors.append(HackerNewsCollector(limit=args.hn_limit, ai_only=not args.hn_all))
     if "reddit" in selected:
         collectors.append(RedditCollector(limit=args.reddit_limit))
     if "arxiv" in selected:
@@ -95,9 +100,7 @@ def find_cross_source_signals(items: list[Item]) -> list[tuple[str, list[Item]]]
         if it.normalized_url:
             by_url[it.normalized_url].append(it)
     signals = [
-        (url, group)
-        for url, group in by_url.items()
-        if len({it.source for it in group}) > 1
+        (url, group) for url, group in by_url.items() if len({it.source for it in group}) > 1
     ]
     signals.sort(key=lambda g: len(g[1]), reverse=True)
     return signals

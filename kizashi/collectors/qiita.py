@@ -30,9 +30,7 @@ def _clean(text: str) -> str:
 class QiitaCollector:
     name = "qiita"
 
-    def __init__(
-        self, tags: list[str] | None = None, per_tag: int = 100, pages: int = 1
-    ) -> None:
+    def __init__(self, tags: list[str] | None = None, per_tag: int = 100, pages: int = 1) -> None:
         self.tags = tags or DEFAULT_TAGS
         # per_page は API 上限 100
         self.per_tag = min(per_tag, 100)

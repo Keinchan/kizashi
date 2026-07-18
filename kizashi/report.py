@@ -97,8 +97,16 @@ def _query(conn: sqlite3.Connection):
            WHERE e.item_id IS NULL AND COALESCE(a.attempts, 0) < 3"""
     ).fetchone()[0]
     return (
-        total, by_source, by_origin, top_scored, signals,
-        latest, texts, digest, enriched_total, pending_total,
+        total,
+        by_source,
+        by_origin,
+        top_scored,
+        signals,
+        latest,
+        texts,
+        digest,
+        enriched_total,
+        pending_total,
     )
 
 
@@ -116,24 +124,151 @@ def _count_terms(texts: list[sqlite3.Row]) -> list[tuple[str, int]]:
 
 # 英語ストップワード (汎用語・記事タイトルに頻出するノイズ)
 _EN_STOP = {
-    "the", "and", "for", "you", "your", "with", "from", "this", "that", "are",
-    "was", "what", "how", "why", "who", "can", "will", "not", "but", "all",
-    "out", "new", "now", "use", "using", "used", "via", "into", "than", "then",
-    "they", "them", "their", "our", "his", "her", "its", "have", "has", "had",
-    "get", "got", "make", "made", "more", "most", "some", "any", "one", "two",
-    "about", "after", "before", "over", "under", "when", "where", "which",
-    "been", "being", "does", "did", "doing", "just", "like", "also", "such",
-    "show", "ask", "tell", "say", "says", "said", "way", "ways", "vs", "etc",
-    "guide", "intro", "part", "day", "days", "week", "year", "top", "best",
-    "good", "great", "first", "last", "next", "still", "much", "many", "well",
+    "the",
+    "and",
+    "for",
+    "you",
+    "your",
+    "with",
+    "from",
+    "this",
+    "that",
+    "are",
+    "was",
+    "what",
+    "how",
+    "why",
+    "who",
+    "can",
+    "will",
+    "not",
+    "but",
+    "all",
+    "out",
+    "new",
+    "now",
+    "use",
+    "using",
+    "used",
+    "via",
+    "into",
+    "than",
+    "then",
+    "they",
+    "them",
+    "their",
+    "our",
+    "his",
+    "her",
+    "its",
+    "have",
+    "has",
+    "had",
+    "get",
+    "got",
+    "make",
+    "made",
+    "more",
+    "most",
+    "some",
+    "any",
+    "one",
+    "two",
+    "about",
+    "after",
+    "before",
+    "over",
+    "under",
+    "when",
+    "where",
+    "which",
+    "been",
+    "being",
+    "does",
+    "did",
+    "doing",
+    "just",
+    "like",
+    "also",
+    "such",
+    "show",
+    "ask",
+    "tell",
+    "say",
+    "says",
+    "said",
+    "way",
+    "ways",
+    "vs",
+    "etc",
+    "guide",
+    "intro",
+    "part",
+    "day",
+    "days",
+    "week",
+    "year",
+    "top",
+    "best",
+    "good",
+    "great",
+    "first",
+    "last",
+    "next",
+    "still",
+    "much",
+    "many",
+    "well",
 }
 # 日本語ストップワード (汎用名詞)
 _JA_STOP = {
-    "こと", "もの", "ため", "よう", "さん", "これ", "それ", "あれ", "ここ",
-    "とき", "場合", "方法", "利用", "使用", "自分", "今回", "一覧", "入門",
-    "紹介", "記事", "internet", "情報", "話", "件", "的", "化", "性", "型",
-    "者", "後", "前", "中", "上", "下", "事", "人", "時", "点", "数",
-    "作成", "実装", "対応", "確認", "設定", "環境", "実行", "追加",
+    "こと",
+    "もの",
+    "ため",
+    "よう",
+    "さん",
+    "これ",
+    "それ",
+    "あれ",
+    "ここ",
+    "とき",
+    "場合",
+    "方法",
+    "利用",
+    "使用",
+    "自分",
+    "今回",
+    "一覧",
+    "入門",
+    "紹介",
+    "記事",
+    "internet",
+    "情報",
+    "話",
+    "件",
+    "的",
+    "化",
+    "性",
+    "型",
+    "者",
+    "後",
+    "前",
+    "中",
+    "上",
+    "下",
+    "事",
+    "人",
+    "時",
+    "点",
+    "数",
+    "作成",
+    "実装",
+    "対応",
+    "確認",
+    "設定",
+    "環境",
+    "実行",
+    "追加",
 }
 
 _JP_RE = re.compile(r"[぀-ヿ㐀-鿿ーー]")
@@ -262,9 +397,7 @@ def build_html(db_path: Path) -> str:
             if r["model"]:
                 models.add(r["model"])
             note = (r["agent_note"] or "").strip()
-            note_html = (
-                f"<div class='digest-note'>{html.escape(note)}</div>" if note else ""
-            )
+            note_html = f"<div class='digest-note'>{html.escape(note)}</div>" if note else ""
             rows_html.append(
                 f"<div class='digest'>"
                 f"<span class='imp imp{min(int(r['importance'] or 0), 10)}'>"
@@ -362,7 +495,7 @@ def build_html(db_path: Path) -> str:
     <p class="tagline">AI Trend Observatory</p>
     <p>蓄積 <strong>{total:,}</strong> 件 &middot; AI抽出済 <strong>{enriched_total:,}</strong> 件
        &middot; 未処理プール <strong>{pending_total:,}</strong> 件
-       &middot; 最終収集 {html.escape(str(latest or '-'))}</p>
+       &middot; 最終収集 {html.escape(str(latest or "-"))}</p>
   </header>
 
   {digest_section}
@@ -374,23 +507,23 @@ def build_html(db_path: Path) -> str:
 
   <section>
     <h2>トレンドワード (タイトルを自然言語分解)</h2>
-    {_bars(trend_rows, '#f0883e')}
+    {_bars(trend_rows, "#f0883e")}
   </section>
 
   <section>
     <h2>注目トピック (ツール/モデルの言及数)</h2>
-    {_bars(term_rows, '#3fb950')}
+    {_bars(term_rows, "#3fb950")}
   </section>
 
   <details class="fold">
     <summary>ソースの比率・取得元の内訳 (クリックで展開)</summary>
     <section>
       <h2>ソース内訳</h2>
-      {_bars(source_rows, '#58a6ff')}
+      {_bars(source_rows, "#58a6ff")}
     </section>
     <section>
       <h2>取得元トップ15 (フィード/subreddit/タグ)</h2>
-      {_bars(origin_rows, '#bc8cff')}
+      {_bars(origin_rows, "#bc8cff")}
     </section>
   </details>
 

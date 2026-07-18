@@ -51,9 +51,7 @@ class ArxivCollector:
                 items.append(it)
         return items
 
-    async def _fetch_category(
-        self, client: httpx.AsyncClient, category: str
-    ) -> list[Item]:
+    async def _fetch_category(self, client: httpx.AsyncClient, category: str) -> list[Item]:
         resp = await client.get(f"http://export.arxiv.org/rss/{category}")
         resp.raise_for_status()
         # feedparser のパース自体は同期CPU処理なのでスレッドへ

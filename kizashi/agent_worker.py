@@ -37,8 +37,10 @@ def run(
     timeout: int,
 ) -> None:
     processed_total = 0
-    print(f"[{_now()}] agent-worker 起動 (batch={batch} sleep={sleep}s "
-          f"idle={idle_sleep}s{' once' if once else ''}) — 課金ゼロ / claude CLI")
+    print(
+        f"[{_now()}] agent-worker 起動 (batch={batch} sleep={sleep}s "
+        f"idle={idle_sleep}s{' once' if once else ''}) — 課金ゼロ / claude CLI"
+    )
 
     while True:
         try:
@@ -48,8 +50,10 @@ def run(
                     if once:
                         print(f"[{_now()}] 未処理なし。終了。")
                         return
-                    print(f"[{_now()}] プール空 (抽出済 {pool['enriched']}"
-                          f" / 失敗 {pool['failed']})。{idle_sleep}s 待機...")
+                    print(
+                        f"[{_now()}] プール空 (抽出済 {pool['enriched']}"
+                        f" / 失敗 {pool['failed']})。{idle_sleep}s 待機..."
+                    )
                     time.sleep(idle_sleep)
                     continue
 
@@ -58,9 +62,11 @@ def run(
                     take = min(take, limit - processed_total)
                 stats = enrich_store_local(store, take, verbose=True, timeout=timeout)
                 processed_total += stats["processed"]
-                print(f"[{_now()}] バッチ完了: +{stats['processed']} 抽出"
-                      f" / {stats['failed']} 失敗 / 累計 {store.enriched_count()}"
-                      f" / 残プール {store.pool_stats()['pending']}")
+                print(
+                    f"[{_now()}] バッチ完了: +{stats['processed']} 抽出"
+                    f" / {stats['failed']} 失敗 / 累計 {store.enriched_count()}"
+                    f" / 残プール {store.pool_stats()['pending']}"
+                )
 
             if limit is not None and processed_total >= limit:
                 print(f"[{_now()}] 上限 {limit} 件に到達。終了。")
@@ -85,9 +91,7 @@ def main() -> None:
     )
     parser.add_argument("--batch", type=int, default=5, help="1バッチの件数 (既定5)")
     parser.add_argument("--sleep", type=int, default=5, help="バッチ間の休止秒 (既定5)")
-    parser.add_argument(
-        "--idle-sleep", type=int, default=900, help="プール空時の待機秒 (既定900)"
-    )
+    parser.add_argument("--idle-sleep", type=int, default=900, help="プール空時の待機秒 (既定900)")
     parser.add_argument("--once", action="store_true", help="1バッチで終了")
     parser.add_argument("--limit", type=int, default=None, help="累計処理上限で終了")
     parser.add_argument(

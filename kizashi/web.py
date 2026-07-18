@@ -97,8 +97,7 @@ def api_stats():
 def api_sources():
     with _connect() as conn:
         return [
-            r["source"]
-            for r in conn.execute("SELECT DISTINCT source FROM items ORDER BY source")
+            r["source"] for r in conn.execute("SELECT DISTINCT source FROM items ORDER BY source")
         ]
 
 
@@ -125,9 +124,7 @@ def api_items(
         else "ORDER BY collected_at DESC"
     )
     with _connect() as conn:
-        total = conn.execute(
-            f"SELECT COUNT(*) FROM items {where_sql}", params
-        ).fetchone()[0]
+        total = conn.execute(f"SELECT COUNT(*) FROM items {where_sql}", params).fetchone()[0]
         offset = (page - 1) * page_size
         rows = conn.execute(
             f"""SELECT source, title, url, author, score, comments,

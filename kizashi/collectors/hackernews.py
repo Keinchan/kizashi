@@ -48,9 +48,7 @@ class HackerNewsCollector:
             hn_id = str(raw["id"])
             url = raw.get("url") or f"https://news.ycombinator.com/item?id={hn_id}"
             ts = raw.get("time")
-            published = (
-                datetime.fromtimestamp(ts, UTC).isoformat() if ts else None
-            )
+            published = datetime.fromtimestamp(ts, UTC).isoformat() if ts else None
             items.append(
                 Item(
                     source=self.name,

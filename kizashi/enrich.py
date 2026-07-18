@@ -109,9 +109,7 @@ def _to_db_fields(ext: Extraction) -> dict:
         "companies_mentioned": json.dumps(ext.companies_mentioned, ensure_ascii=False),
         "content_type": ext.content_type,
         "is_jp_coverage_gap": int(ext.is_jp_coverage_gap),
-        "potential_content_ideas": json.dumps(
-            ext.potential_content_ideas, ensure_ascii=False
-        ),
+        "potential_content_ideas": json.dumps(ext.potential_content_ideas, ensure_ascii=False),
         "questions_raised": json.dumps(ext.questions_raised, ensure_ascii=False),
         "agent_note": ext.agent_note,
     }
@@ -142,9 +140,7 @@ def enrich_store(store: Storage, limit: int | None, verbose: bool = True) -> dic
     if verbose:
         print(f"抽出開始: {len(rows)} 件を {MODEL} で処理します...\n")
     # キャッシュ対象の system プレフィクス (全リクエストで共通=毎回キャッシュヒット)
-    system = [
-        {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}
-    ]
+    system = [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
 
     for n, row in enumerate(rows, 1):
         try:

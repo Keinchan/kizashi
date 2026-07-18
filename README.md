@@ -132,6 +132,59 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 （取得: https://console.anthropic.com/settings/keys ）
 
+## LINE で毎朝ダイジェストを受け取る (kizashi-digest)
+
+収集済みプールから **今日最も熱い3件だけを厳選**し、記事を開かなくても分かる
+深掘り要約(各300〜500字)を **LINE に毎朝配信**します。厳選=Haiku系、要約=Sonnet系。
+ANTHROPIC_API_KEY が無い場合は **ログイン済み claude CLI (課金ゼロ)** に自動フォールバック
+します(本番はこちら)。
+
+```bash
+uv run kizashi-digest --dry-run     # LINE送信せず内容を確認 (まずこれで確認)
+uv run kizashi-digest               # 厳選→要約→LINE配信 (通知済みは記録し重複防止)
+uv run kizashi-digest --collect     # 収集も行ってから配信 (朝の単発実行向け)
+```
+
+### セットアップ
+
+1. **LINE Developers でチャネルを作る**
+   - https://developers.line.biz/console/ でプロバイダーを作成
+   - **Messaging API** チャネルを新規作成
+   - 「Messaging API設定」で **チャネルアクセストークン(長期)** を発行
+   - 同画面のQRから、作成したBotを自分のLINEで **友だち追加**
+
+2. **自分の userId を取得**
+   - 「チャネル基本設定」の Your user ID、または Webhook 受信で確認できます。
+     Botを友だち追加した状態で push 送信先になります。
+
+3. **`.env` に設定** (`.env.example` 参照):
+
+   ```
+   LINE_CHANNEL_ACCESS_TOKEN=（長期アクセストークン）
+   LINE_USER_ID=（自分のuserId）
+   ```
+
+4. **確認と配信**
+
+   ```bash
+   uv run kizashi-digest --dry-run   # 内容を目視確認
+   uv run kizashi-digest             # 実際にLINEへ配信
+   ```
+
+### 毎朝の自動配信 (cron)
+
+収集(3時間ごと)は別 cron に任せ、朝1回ダイジェストだけ配信する例:
+
+```cron
+# 毎朝7時: 今日のトップ3を厳選→要約→LINE配信
+0 7 * * * cd /root/kizashi && /root/.local/bin/uv run kizashi-digest >> /root/kizashi/run.log 2>&1
+```
+
+> ⚠️ Reddit は Data API 承認申請中のため、暫定で公開RSS(`hot.rss`)から収集します
+> (`collectors/reddit_rss.py`)。承認後は PRAW ベース(`collectors/reddit.py`)へ
+> 差し替える前提で独立モジュールにしています。VPSのIPでRSSが403になるsubredditは
+> 自動でスキップし、他ソースで配信を続けます。
+
 ## VPS で常時運用する (Linux)
 
 手元PCではなく VPS 上で「毎朝ダイジェストが自動でできている」状態にする手順は

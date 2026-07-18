@@ -32,8 +32,12 @@ _KEYS = list(Extraction.model_fields.keys())
 # CLIの出力ゆらぎに備え、型を寄せるためのフィールド分類。
 _STR_FIELDS = {"title_ja", "summary_1line", "summary_3line", "content_type", "agent_note"}
 _LIST_FIELDS = {
-    "topics", "tools_mentioned", "models_mentioned", "companies_mentioned",
-    "potential_content_ideas", "questions_raised",
+    "topics",
+    "tools_mentioned",
+    "models_mentioned",
+    "companies_mentioned",
+    "potential_content_ideas",
+    "questions_raised",
 }
 _JSON_INSTRUCTION = (
     "\n\n# 出力形式 (厳守)\n"
@@ -53,6 +57,28 @@ class AgentError(RuntimeError):
 def agent_available(cmd: str = AGENT_CMD) -> bool:
     """CLIエージェントが PATH 上に存在するか。"""
     return shutil.which(cmd) is not None
+
+
+def run_agent(prompt: str, cmd: str = AGENT_CMD, timeout: int = DEFAULT_TIMEOUT) -> str:
+    """ヘッドレス CLI エージェントにプロンプトを渡し、標準出力テキストを返す (課金ゼロ)。
+
+    非0終了・タイムアウト・未インストールは AgentError を送出する。
+    抽出以外 (LINEダイジェストの厳選/要約など) からも共通で使う汎用呼び出し口。
+    """
+    try:
+        proc = subprocess.run(
+            [cmd, "-p", prompt],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise AgentError(f"timeout after {timeout}s") from e
+    except FileNotFoundError as e:
+        raise AgentError(f"{cmd} が見つからない (未インストール?)") from e
+    if proc.returncode != 0:
+        raise AgentError(f"{cmd} exit {proc.returncode}: {proc.stderr.strip()[:200]}")
+    return proc.stdout.strip()
 
 
 def _build_prompt(row) -> str:
@@ -88,30 +114,14 @@ def _coerce(data: dict) -> dict:
     return out
 
 
-def extract_via_claude(
-    row, cmd: str = AGENT_CMD, timeout: int = DEFAULT_TIMEOUT
-) -> Extraction:
+def extract_via_claude(row, cmd: str = AGENT_CMD, timeout: int = DEFAULT_TIMEOUT) -> Extraction:
     """記事1件を CLI エージェントで構造化抽出して Extraction を返す。
 
     失敗 (非0終了・タイムアウト・JSON不正・スキーマ不一致) は AgentError を送出。
     """
     prompt = _build_prompt(row)
-    try:
-        proc = subprocess.run(
-            [cmd, "-p", prompt],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired as e:
-        raise AgentError(f"timeout after {timeout}s") from e
-    except FileNotFoundError as e:
-        raise AgentError(f"{cmd} が見つからない (未インストール?)") from e
-
-    if proc.returncode != 0:
-        raise AgentError(f"{cmd} exit {proc.returncode}: {proc.stderr.strip()[:200]}")
-
-    data = _coerce(_parse_json(proc.stdout))
+    stdout = run_agent(prompt, cmd=cmd, timeout=timeout)
+    data = _coerce(_parse_json(stdout))
     try:
         return Extraction(**data)
     except (TypeError, ValueError) as e:  # pydantic ValidationError は ValueError 派生
