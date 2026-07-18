@@ -13,9 +13,9 @@ SELECTOR_MODEL = "claude-haiku-4-5-20251001"  # Stage 1: 厳選 (安価・高速
 SUMMARIZER_MODEL = "claude-sonnet-4-6"  # Stage 2: 深掘り要約 (質重視)
 
 # --- ダイジェスト ---
-DIGEST_COUNT = 3  # 1日に届ける件数。ノイズ化を防ぐため厳守 (Cluade.md)。
-SUMMARY_MIN = 300  # 深掘り要約の目安下限 (文字)
-SUMMARY_MAX = 500  # 深掘り要約の目安上限 (文字)
+DIGEST_COUNT = 3  # 1回の配信で届ける件数。
+SUMMARY_MIN = 120  # 要約の目安下限 (文字)。コンパクト重視。
+SUMMARY_MAX = 220  # 要約の目安上限 (文字)。超過させない。
 
 # --- LINE Messaging API ---
 LINE_PUSH_ENDPOINT = "https://api.line.me/v2/bot/message/push"
