@@ -1,0 +1,12 @@
+# Kizashi crontab example (Linux VPS).
+# Edit paths: replace /home/USER/kizashi and the uv path (run `which uv`).
+# Install with: crontab -e  (then paste these lines)
+#
+# cron has a minimal PATH, so use the ABSOLUTE path to uv.
+
+# Collection every 3 hours (free, no API cost)
+0 */3 * * * cd /home/USER/kizashi && /home/USER/.local/bin/uv run kizashi-daily --no-enrich >> /home/USER/kizashi/run.log 2>&1
+
+# Morning digest: enrich top 10 by value + rebuild dashboard (~450-600 JPY/month)
+# Tighten to --limit 5 or run every other day (0 7 */2 * *) for ~200-300 JPY/month.
+0 7 * * * cd /home/USER/kizashi && /home/USER/.local/bin/uv run kizashi-enrich --limit 10 && /home/USER/.local/bin/uv run kizashi-report >> /home/USER/kizashi/run.log 2>&1

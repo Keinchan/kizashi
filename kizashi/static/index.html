@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark light">
+<title>Kizashi — AI Trend Radar</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2230; --border:#2a3140;
+    --fg:#e6edf3; --muted:#8b949e; --accent:#58a6ff; --accent2:#3fb950;
+    --chip:#21262d;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    line-height:1.5;font-size:14px}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  header{padding:18px 20px;border-bottom:1px solid var(--border);
+    display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+    background:linear-gradient(180deg,#11161f,#0d1117)}
+  header h1{margin:0;font-size:20px;letter-spacing:.5px}
+  header h1 .dot{color:var(--accent2)}
+  header .meta{color:var(--muted);font-size:12px}
+  .wrap{max-width:1100px;margin:0 auto;padding:18px 16px 60px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-bottom:18px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+  .card h2{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+  .big{font-size:30px;font-weight:700}
+  .bar-row{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:13px}
+  .bar-row .label{width:84px;color:var(--muted);text-align:right;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bar-row .track{flex:1;background:var(--panel2);border-radius:4px;overflow:hidden;height:14px}
+  .bar-row .fill{height:100%;background:linear-gradient(90deg,#1f6feb,#58a6ff)}
+  .bar-row .n{width:48px;text-align:right;color:var(--fg);flex:none}
+  .spark{display:flex;align-items:flex-end;gap:2px;height:60px}
+  .spark .sb{flex:1;background:#1f6feb;border-radius:2px 2px 0 0;min-height:2px;opacity:.85}
+  .spark .sb:hover{background:var(--accent)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{background:var(--chip);border:1px solid var(--border);border-radius:999px;
+    padding:3px 10px;font-size:12px;cursor:pointer}
+  .chip:hover{border-color:var(--accent)}
+  .chip b{color:var(--accent2);margin-left:4px}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+  .controls input,.controls select{background:var(--panel);border:1px solid var(--border);
+    color:var(--fg);border-radius:8px;padding:8px 10px;font-size:14px}
+  .controls input[type=search]{flex:1;min-width:180px}
+  .item{padding:12px 4px;border-bottom:1px solid var(--border)}
+  .item .t{font-size:15px;font-weight:600}
+  .item .sub{color:var(--muted);font-size:12px;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
+  .src{display:inline-block;background:var(--panel2);border:1px solid var(--border);
+    border-radius:5px;padding:0 6px;font-size:11px;color:var(--accent)}
+  .pager{display:flex;justify-content:center;align-items:center;gap:14px;margin-top:18px}
+  .pager button{background:var(--panel);border:1px solid var(--border);color:var(--fg);
+    border-radius:8px;padding:7px 14px;cursor:pointer}
+  .pager button:disabled{opacity:.4;cursor:default}
+  .loading{color:var(--muted);text-align:center;padding:30px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Kizashi<span class="dot">.</span> <span style="font-weight:400;font-size:14px;color:var(--muted)">AI Trend Radar</span></h1>
+  <span class="meta" id="meta">loading…</span>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+    <div class="card">
+      <h2>Total collected</h2>
+      <div class="big" id="total">—</div>
+      <div class="meta" style="color:var(--muted);font-size:12px" id="latest"></div>
+    </div>
+    <div class="card">
+      <h2>By source</h2>
+      <div id="bysource"></div>
+    </div>
+    <div class="card" style="grid-column:span 1">
+      <h2>Daily collected (last 30)</h2>
+      <div class="spark" id="spark"></div>
+    </div>
+    <div class="card">
+      <h2>Tracked entities</h2>
+      <div class="chips" id="entities"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <input type="search" id="q" placeholder="検索 (タイトル・本文)…">
+    <select id="source"><option value="">全ソース</option></select>
+    <select id="order">
+      <option value="recent">新しい順</option>
+      <option value="score">スコア順</option>
+    </select>
+  </div>
+
+  <div id="list"><div class="loading">loading…</div></div>
+
+  <div class="pager">
+    <button id="prev">‹ 前</button>
+    <span id="pinfo" class="meta"></span>
+    <button id="next">次 ›</button>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let page = 1, pageSize = 50, totalItems = 0, debounce;
+
+function fmtDate(s){ if(!s) return ''; return s.replace('T',' ').slice(0,16); }
+function esc(s){ const d=document.createElement('div'); d.textContent=s??''; return d.innerHTML; }
+
+async function loadStats(){
+  const r = await fetch('api/stats'); const d = await r.json();
+  $('#total').textContent = d.total.toLocaleString();
+  $('#latest').textContent = '最終収集: ' + fmtDate(d.latest) + ' (UTC)';
+  $('#meta').textContent = `${d.total.toLocaleString()} items · 最終収集 ${fmtDate(d.latest)} UTC`;
+
+  const max = Math.max(...d.by_source.map(s=>s.n), 1);
+  $('#bysource').innerHTML = d.by_source.map(s=>`
+    <div class="bar-row"><span class="label">${esc(s.source)}</span>
+      <span class="track"><span class="fill" style="width:${(s.n/max*100).toFixed(1)}%"></span></span>
+      <span class="n">${s.n.toLocaleString()}</span></div>`).join('');
+
+  const dmax = Math.max(...d.by_day.map(x=>x.n), 1);
+  $('#spark').innerHTML = d.by_day.map(x=>`
+    <div class="sb" style="height:${(x.n/dmax*100).toFixed(0)}%" title="${x.day}: ${x.n}"></div>`).join('');
+
+  $('#entities').innerHTML = d.entities.map(e=>`
+    <span class="chip" data-q="${esc(e.label)}">${esc(e.label)}<b>${e.n}</b></span>`).join('');
+  document.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{ $('#q').value=c.dataset.q; page=1; loadItems(); });
+}
+
+async function loadSources(){
+  const r = await fetch('api/sources'); const arr = await r.json();
+  $('#source').innerHTML = '<option value="">全ソース</option>' +
+    arr.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('');
+}
+
+async function loadItems(){
+  $('#list').innerHTML = '<div class="loading">loading…</div>';
+  const p = new URLSearchParams({q:$('#q').value, source:$('#source').value,
+    order:$('#order').value, page, page_size:pageSize});
+  const r = await fetch('api/items?'+p); const d = await r.json();
+  totalItems = d.total;
+  if(!d.items.length){ $('#list').innerHTML='<div class="loading">該当なし</div>'; }
+  else $('#list').innerHTML = d.items.map(it=>`
+    <div class="item">
+      <div class="t"><a href="${esc(it.url)}" target="_blank" rel="noopener">${esc(it.title)}</a></div>
+      <div class="sub">
+        <span class="src">${esc(it.origin||it.source)}</span>
+        ${it.score!=null?`▲ ${it.score}`:''}
+        ${it.comments!=null?`💬 ${it.comments}`:''}
+        ${it.author?`@${esc(it.author)}`:''}
+        <span style="margin-left:auto">${fmtDate(it.published_at||it.collected_at)}</span>
+      </div>
+    </div>`).join('');
+  const pages = Math.max(1, Math.ceil(totalItems/pageSize));
+  $('#pinfo').textContent = `${totalItems.toLocaleString()} 件 · ${page}/${pages}`;
+  $('#prev').disabled = page<=1;
+  $('#next').disabled = page>=pages;
+}
+
+$('#q').addEventListener('input', ()=>{ clearTimeout(debounce);
+  debounce=setTimeout(()=>{ page=1; loadItems(); }, 300); });
+$('#source').addEventListener('change', ()=>{ page=1; loadItems(); });
+$('#order').addEventListener('change', ()=>{ page=1; loadItems(); });
+$('#prev').onclick = ()=>{ if(page>1){page--; loadItems(); window.scrollTo(0,0);} };
+$('#next').onclick = ()=>{ page++; loadItems(); window.scrollTo(0,0); };
+
+loadStats(); loadSources(); loadItems();
+setInterval(loadStats, 300000); // 5分ごとに統計を再取得
+</script>
+</body>
+</html>

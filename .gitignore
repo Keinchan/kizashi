@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+
+# Env / secrets
+.env
+.env.local
+
+# Kizashi
+*.db
+*.db-journal
+*.sqlite
+report.html
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Logs
+*.log
