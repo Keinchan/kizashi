@@ -21,8 +21,9 @@ import sys
 from . import load_dotenv
 from .config import DIGEST_COUNT
 from .db import DEFAULT_DB_PATH, Storage
+from .log import warn
 from .notifier import LineNotifyError, push
-from .selector import select, to_candidates
+from .selector import is_fallback_reason, select, to_candidates
 from .summarizer import DigestEntry, summarize
 
 
@@ -84,6 +85,16 @@ def _run(args: argparse.Namespace) -> int:
             return 0
         for c, reason in picked:
             print(f"  ★ [{c.origin}] {c.title[:50]}  — {reason}")
+
+        # AI厳選が働かずスコア順に落ちていないか監視 (静かな劣化の可視化)。
+        fb = sum(1 for _, r in picked if is_fallback_reason(r))
+        if fb == len(picked):
+            warn(
+                f"AI厳選が全滅 → 全{fb}件がスコア順フォールバックです。"
+                " `uv run kizashi-doctor` で原因 (APIキー/claude CLIログイン) を確認してください。"
+            )
+        elif fb:
+            warn(f"{fb}/{len(picked)}件がスコア順フォールバック (AI厳選が一部失敗)。")
 
         print("\n深掘り要約を生成中 ...")
         entries = summarize(picked)

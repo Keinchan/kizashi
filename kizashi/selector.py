@@ -18,8 +18,19 @@ from dataclasses import dataclass
 from pydantic import BaseModel, Field
 
 from .config import SELECTOR_MODEL, has_anthropic_key
+from .log import warn
 
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+# スコア順フォールバック時に付く選定理由。AI厳選が働かなかった印として検出に使う。
+FALLBACK_REASON = "スコア順による自動選定 (フォールバック)"
+NOMODEL_REASON = "スコア順による自動選定 (モデル未使用)"
+_FALLBACK_REASONS = frozenset({FALLBACK_REASON, NOMODEL_REASON})
+
+
+def is_fallback_reason(reason: str) -> bool:
+    """選定理由がスコア順フォールバック由来か (AI厳選が働かなかった印)。"""
+    return reason in _FALLBACK_REASONS
 
 _SYSTEM = """あなたはAIトレンド観測ツール「Kizashi」の編集者です。
 今日集まったAI関連の候補記事リストから、日本のAI開発者にとって\
@@ -88,7 +99,7 @@ def _format_list(cands: list[Candidate]) -> str:
 
 
 def _fallback(
-    cands: list[Candidate], count: int, reason: str = "スコア順による自動選定 (フォールバック)"
+    cands: list[Candidate], count: int, reason: str = FALLBACK_REASON
 ) -> list[tuple[Candidate, str]]:
     """モデルが使えないときのスコア順フォールバック。"""
     ranked = sorted(cands, key=lambda c: (c.score or 0, c.comments or 0), reverse=True)
@@ -140,7 +151,7 @@ def _select_via_api(cands: list[Candidate], count: int) -> list[tuple[Candidate,
             output_format=_Selection,
         )
     except anthropic.APIError as e:
-        print(f"  [selector] API失敗、スコア順にフォールバック: {e!r}")
+        warn(f"厳選=API失敗 → スコア順フォールバック (キーが無効/期限切れ/残高不足?): {e!r}")
         return _fallback(cands, count)
     return _resolve_picks(resp.parsed_output.picks, cands, count)
 
@@ -163,7 +174,7 @@ def _select_via_cli(cands: list[Candidate], count: int) -> list[tuple[Candidate,
             raise AgentError(f"JSONなし: {out[:120]!r}")
         picks = [_Pick(**p) for p in json.loads(m.group(0)).get("picks", [])]
     except (AgentError, ValueError, TypeError, KeyError) as e:
-        print(f"  [selector] CLI失敗、スコア順にフォールバック: {e!r}")
+        warn(f"厳選=CLI失敗 → スコア順フォールバック (claude 未ログイン/出力不正?): {e!r}")
         return _fallback(cands, count)
     return _resolve_picks(picks, cands, count)
 
@@ -182,4 +193,5 @@ def select(cands: list[Candidate], count: int) -> list[tuple[Candidate, str]]:
 
     if agent_available():
         return _select_via_cli(cands, count)
-    return _fallback(cands, count, "スコア順による自動選定 (モデル未使用)")
+    warn("厳選=バックエンドなし (APIキー無効 & claude CLI 不在) → スコア順フォールバック")
+    return _fallback(cands, count, NOMODEL_REASON)

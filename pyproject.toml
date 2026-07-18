@@ -23,6 +23,7 @@ kizashi-web = "kizashi.web:main"
 kizashi-rising = "kizashi.rising:main"
 kizashi-agent-worker = "kizashi.agent_worker:main"
 kizashi-digest = "kizashi.digest:main"
+kizashi-doctor = "kizashi.doctor:main"
 
 [dependency-groups]
 dev = [

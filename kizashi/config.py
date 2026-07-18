@@ -32,4 +32,12 @@ def line_user_id() -> str | None:
 
 
 def has_anthropic_key() -> bool:
-    return bool(os.getenv("ANTHROPIC_API_KEY"))
+    """本物っぽい Anthropic API キーが設定されているかを判定する。
+
+    空文字・空白/改行のみ・``sk-ant-...`` のようなプレースホルダを「キーあり」と
+    誤判定すると、有料APIブランチに入って 401 で静かにスコア順フォールバックに
+    落ちる (= 選定理由が全部スコア順になる) 典型原因になる。これを避けるため、
+    実キーの形 (``sk-ant-`` 始まり・十分な長さ・``...`` を含まない) だけ True にする。
+    """
+    key = (os.getenv("ANTHROPIC_API_KEY") or "").strip()
+    return key.startswith("sk-ant-") and len(key) >= 40 and "..." not in key

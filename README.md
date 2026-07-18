@@ -145,6 +145,19 @@ uv run kizashi-digest               # 厳選→要約→LINE配信 (通知済み
 uv run kizashi-digest --collect     # 収集も行ってから配信 (朝の単発実行向け)
 ```
 
+### 配信がおかしいとき: `kizashi-doctor` で診断
+
+「LINEの**選定理由が毎回スコア順**になっている」= AI厳選が働かず
+スコア順フォールバックに落ちている症状です。原因 (APIキーが無効/期限切れ、または
+claude CLI が未ログイン) を配信を待たずに切り分けられます:
+
+```bash
+uv run kizashi-doctor   # LINE送信なし。バックエンド判定・CLIログイン確認・厳選テストを一括
+```
+
+> フォールバックに落ちた際は `[kizashi:WARN]` プレフィクスの警告を stderr に出すように
+> なったので、cron ログ (`run.log`) を `grep kizashi:WARN` すれば静かな劣化を検知できます。
+
 ### セットアップ
 
 1. **LINE Developers でチャネルを作る**

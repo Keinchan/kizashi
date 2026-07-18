@@ -14,6 +14,7 @@ from dataclasses import dataclass
 import httpx
 
 from .config import SUMMARIZER_MODEL, SUMMARY_MAX, SUMMARY_MIN, has_anthropic_key
+from .log import warn
 from .selector import Candidate
 
 # 多くのサイトは素のクローラUAを弾くため、ブラウザ風UAで本文を取りに行く。
@@ -129,7 +130,7 @@ def summarize(picked: list[tuple[Candidate, str]]) -> list[DigestEntry]:
             else:
                 summary = _fallback_summary(cand, body)
         except Exception as e:  # noqa: BLE001 - 1件の失敗で全体を止めない
-            print(f"  [summarizer] 要約失敗 ({cand.url}): {e!r}")
+            warn(f"要約失敗 → 抜粋フォールバック ({cand.url}): {e!r}")
             summary = _fallback_summary(cand, body)
         entries.append(
             DigestEntry(
