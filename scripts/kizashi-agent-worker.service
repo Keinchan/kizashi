@@ -17,8 +17,8 @@ WorkingDirectory=/root/kizashi
 # claude CLI のログイン情報 (~/.claude) を参照できるよう HOME を明示。
 Environment=HOME=/root
 Environment=KIZASHI_DB=/root/kizashi/kizashi.db
-# バッチ5件→短休止。プールが空になると 15 分アイドルして収集 cron の新規を待つ。
-ExecStart=/root/.local/bin/uv run kizashi-agent-worker --batch 5 --sleep 5 --idle-sleep 900 --db /root/kizashi/kizashi.db
+# バッチ3件→休止。プールが空になると 15 分アイドルして収集 cron の新規を待つ。
+ExecStart=/root/.local/bin/uv run kizashi-agent-worker --batch 3 --sleep 20 --idle-sleep 900 --db /root/kizashi/kizashi.db
 Restart=always
 RestartSec=30
 # 常駐だがCPUは控えめに (抽出はI/O待ちが主)。

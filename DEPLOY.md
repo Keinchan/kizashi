@@ -1,142 +1,146 @@
-# Kizashi VPS デプロイ手順 (Linux)
+# Kizashi VPS デプロイ / 運用手順 (Linux, root 運用)
 
-月数百円で「毎朝ダイジェストが自動でできている」状態を VPS 上に作る手順。
-収集は無料・無制限、抽出(Claude API)だけ予算内で価値の高い順に消化します。
+本番は **root** ユーザーで動かす。`/root/kizashi` にコードを置き、収集は cron、
+抽出は常駐サービス(定額 claude CLI・API課金ゼロ)、ダッシュボードは systemd で配信する。
 
-前提: Ubuntu/Debian 系の Linux VPS、SSHログインできる状態。
+開発は **golde** ユーザーで `~/kizashi` を編集 → GitHub に push → 本番(root)が pull、
+という流れ。収集は無料・無制限、抽出は予算内で価値の高い順に消化する。
+
+前提: Ubuntu/Debian 系の Linux VPS、root で作業できる状態。GitHub リポジトリ
+`https://github.com/Keinchan/kizashi` は作成・push 済み。
 
 ---
 
-## 0. コードを GitHub 経由で VPS に載せる (ローカルPCで1回)
+## 開発 → 反映の流れ (日常運用)
 
-VPS は手元の `kizashi.db`(生データ)は不要です。コードだけ運べばOK。
-まだリモートが無いので、GitHub に **private** リポジトリを作って push します。
-
-ローカル(Windows)で:
-
-```powershell
-# GitHub で空の private リポジトリ "kizashi" を作成しておく(Web UIで)
-git remote add origin https://github.com/<あなた>/kizashi.git
-git push -u origin main
+```
+golde で編集  →  bash scripts/push.sh "変更内容"   →  GitHub
+                                                        ↓
+root で       sudo bash /root/kizashi/scripts/deploy.sh  →  本番反映(pull→sync→再起動)
 ```
 
-> `.gitignore` で `.env` / `*.db` / `.venv` は除外済み。秘密情報もDBも上がりません。
+- **golde 側 (開発)**: `~/kizashi` を編集し、`bash scripts/push.sh "コミットメッセージ"`。
+  ruff で lint/format してから commit → push まで自動。
+- **root 側 (反映)**: VPS で `sudo bash /root/kizashi/scripts/deploy.sh`。
+  `git fetch → reset --hard origin/main → uv sync → サービス再起動` まで自動。
+  `.env` / `kizashi.db` / `report.html` は `.gitignore` 済みなので上書きされない。
 
 ---
 
-## 1. VPS の準備 (VPSにSSHして1回)
+## 0. 初回セットアップ (root で 1 回だけ)
+
+`/root/kizashi` を GitHub リポジトリの git クローンにする。既に生データ
+(`kizashi.db`) や `.env` がある場合も、それらは `.gitignore` 済みなので消えない。
 
 ```bash
-sudo apt update && sudo apt install -y git curl
-
-# uv をインストール (公式インストーラ。~/.local/bin/uv に入る)
+# uv を root に用意 (~/.local/bin/uv に入る)
 curl -LsSf https://astral.sh/uv/install.sh | sh
-source $HOME/.local/bin/env   # or: export PATH="$HOME/.local/bin:$PATH"
-uv --version
+source $HOME/.local/bin/env
 
-# コードを取得
-git clone https://github.com/<あなた>/kizashi.git
-cd kizashi
-
-# 依存をインストール (uv が Python 3.13 も用意する)
+cd /root/kizashi           # 既存の運用ディレクトリ
+git init
+git remote add origin https://github.com/Keinchan/kizashi.git
+git fetch origin
+git reset --hard origin/main   # 追跡ファイルのみ最新化 (.env/DB は無傷)
 uv sync
 ```
 
-`scripts/setup-vps.sh` を使えば上記の clone 後の部分を一括で実行できます:
+APIキー等は `.env` に設定 (無ければ `cp .env.example .env` してから編集):
 
 ```bash
-bash scripts/setup-vps.sh
-```
-
----
-
-## 2. APIキー等を設定
-
-```bash
-cp .env.example .env
-nano .env     # ANTHROPIC_API_KEY=sk-ant-... を記入して保存
+nano .env     # ANTHROPIC_API_KEY=sk-ant-... など
 ```
 
 任意: `QIITA_TOKEN`(レート緩和)、`REDDIT_CLIENT_ID/SECRET`、`X_BEARER_TOKEN`。
 
 **重要(予算の安全装置)**: Anthropic Console → Settings → Limits で
-**月次の上限(ハードキャップ)** を設定してください (例: $5)。これで万一でも
-使いすぎを物理的に防げます。
+**月次の上限(ハードキャップ)** を設定 (例: $5)。万一でも使いすぎを物理的に防ぐ。
 
 ---
 
-## 3. 動作確認
+## 1. 収集の自動化 (root の cron)
+
+収集は無料・無制限。root の `crontab -e` に以下を追記する
+(サンプルは `scripts/kizashi.cron`)。cron は PATH が最小なので **uv は絶対パス**。
+
+```cron
+# 収集: 3時間ごと (無料、API課金なし)
+0 */3 * * * cd /root/kizashi && /root/.local/bin/uv run kizashi-daily --no-enrich >> /root/kizashi/run.log 2>&1
+```
+
+---
+
+## 2. 抽出の常駐サービス (API課金ゼロ)
+
+抽出は API 課金ではなく、**定額の claude CLI にログイン済みの常駐ワーカー**で回す。
+収集 cron が貯めた未処理プールを、スコアの高い順に少しずつ消化し続ける。
+
+```bash
+sudo cp scripts/kizashi-agent-worker.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now kizashi-agent-worker
+journalctl -u kizashi-agent-worker -f      # ログ追尾
+```
+
+> API キーで抽出したい場合は代わりに cron で
+> `uv run kizashi-enrich --limit 10 && uv run kizashi-report` を毎朝回す方法もある
+> (トップ10抽出で概ね月450〜600円)。常駐ワーカーと併用はしないこと。
+
+---
+
+## 3. ダッシュボード配信 (127.0.0.1 のみ / 外部非公開)
+
+`kizashi-web` サービスがローカル限定(127.0.0.1:8000)で配信する。
+
+```bash
+sudo cp scripts/kizashi-web.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now kizashi-web
+```
+
+手元PCから SSH トンネルで閲覧 (外部には公開しない):
+
+```bash
+ssh -L 8080:localhost:8000 root@<VPSのIP>
+# → ブラウザで http://localhost:8080 を開く
+```
+
+---
+
+## 4. 動作確認
 
 ```bash
 uv run kizashi-daily --no-enrich   # 収集だけ(無料)。数百〜千件入るはず
-uv run kizashi-enrich --limit 5    # 5件だけ抽出(数十円)。日本語要約を確認
-uv run kizashi-pool                # プール状況
+uv run kizashi-pool                # 未処理プール状況
+systemctl status kizashi-agent-worker kizashi-web
 ```
 
 ---
 
-## 4. cron で自動化
-
-`crontab -e` で以下を追記 (`/home/USER/kizashi` は実際のパスに置換)。
-cron は PATH が最小なので **uv は絶対パス**で書きます (`which uv` で確認)。
-
-```cron
-# 収集: 3時間ごと (無料)
-0 */3 * * * cd /home/USER/kizashi && /home/USER/.local/bin/uv run kizashi-daily --no-enrich >> /home/USER/kizashi/run.log 2>&1
-
-# 朝の抽出+レポート: 毎朝7時に価値の高い順トップ10だけ抽出 (≒月450〜600円)
-0 7 * * * cd /home/USER/kizashi && /home/USER/.local/bin/uv run kizashi-enrich --limit 10 && /home/USER/.local/bin/uv run kizashi-report >> /home/USER/kizashi/run.log 2>&1
-```
-
-予算をもっと絞るなら `--limit 5` にする/隔日にする (`0 7 */2 * *`)。
-`scripts/kizashi.cron` にこのサンプルがあります。
-
----
-
-## 5. ダッシュボードを見る (安全・無料)
-
-VPS にブラウザは無いので、SSHトンネルでローカルから見るのが安全(公開しない)。
-
-VPS側でローカル限定の簡易サーバを常駐 (report.html のあるディレクトリで):
-
-```bash
-# 127.0.0.1 のみにバインド = 外部公開しない
-nohup python3 -m http.server 8000 --bind 127.0.0.1 --directory /home/USER/kizashi >/dev/null 2>&1 &
-```
-
-手元PCから SSH トンネルを張る:
-
-```bash
-ssh -L 8080:localhost:8000 USER@<VPSのIP>
-```
-
-ブラウザで http://localhost:8080/report.html を開く。
-
-> もっと簡単に済ませるなら、生成された `report.html` を時々 `scp` で手元に
-> 落として開くだけでもOK:
-> `scp USER@<VPSのIP>:/home/USER/kizashi/report.html .`
-
----
-
-## 6. 運用とコスト感
+## 5. 運用とコスト感
 
 | 項目 | コスト |
 |---|---|
 | 収集 (全ソース・3時間ごと) | **無料** (取得量に依存しない) |
-| 抽出 Sonnet 4.6 | 約 1〜2円/件 (Batch APIで半額) |
-| 毎朝トップ10抽出 | 約 450〜600円/月 |
-| 毎朝トップ5 or 隔日 | 約 200〜300円/月 |
+| 抽出 (常駐ワーカー / 定額 claude CLI) | **API課金ゼロ** |
+| 抽出を API で回す場合 (毎朝トップ10) | 約 450〜600円/月 |
 
 - 収集はいくら貯めても無料。未処理プールに溜め、抽出だけ予算内で消化。
-- さらに安くするなら Batch API 化(50%オフ) が次の最適化 (ロードマップ)。
-- Anthropic Console の月次上限が最終的な安全弁。
+- 常駐ワーカー方式なら API 課金は発生しない (定額の claude CLI を利用)。
+- API 方式にする場合は Anthropic Console の月次上限が最終的な安全弁。
 
 ---
 
-## 更新の反映
-
-ローカルで開発 → push、VPSで pull するだけ:
+## 6. まとめ (よく使うコマンド)
 
 ```bash
-cd /home/USER/kizashi && git pull && uv sync
+# 開発 (golde)
+bash scripts/push.sh "変更内容"                 # lint→commit→push
+
+# 反映 (root / VPS)
+sudo bash /root/kizashi/scripts/deploy.sh        # pull→sync→サービス再起動
+
+# 状態確認 (root)
+systemctl status kizashi-agent-worker kizashi-web
+journalctl -u kizashi-agent-worker -f
 ```
