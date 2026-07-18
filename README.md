@@ -78,6 +78,33 @@ Reddit はサーバーからの公開JSONアクセスをブロックするため
 
 3. `uv run kizashi` を再実行すると6つのsubredditから収集します。
 
+### Reddit Data API — Use Case (for API access review)
+
+**Summary:** Kizashi is an *off-platform, read-only, personal* aggregator. It reads
+public post listings from a handful of AI-related subreddits on a schedule and merges
+them with non-Reddit sources (Hacker News, arXiv, GitHub Trending, Hugging Face Papers,
+RSS) into a **private digest for a single user** — the author. Nothing is posted,
+written, or automated back onto Reddit, and no data is redistributed or sold.
+
+**Why the Data API (script-type app), not Devvit:**
+Devvit targets apps that run *inside* Reddit for communities — triggered by in-community
+UI/events, sandboxed, and producing output for that community. This use case is the
+opposite:
+
+- **Off-platform consumer.** The app runs on my own server/PC, not inside a subreddit.
+  There is no community context to attach a Devvit app to.
+- **External, cross-source aggregation.** It combines Reddit with non-Reddit sources
+  (Hacker News, arXiv, …). Devvit is optimized for using Reddit data *within* Reddit,
+  with constrained outbound HTTP — not free cross-source aggregation.
+- **Delivery outside Reddit.** The digest is delivered to my own private channel
+  (e.g. LINE / a static dashboard), which Devvit has no supported path for.
+- **Read-only & scheduled.** Only public listing reads on a schedule; no writes, no
+  moderation actions, no user-facing bot on Reddit.
+
+This external, read-only, scheduled aggregation is exactly what the Data API's
+**script-type** app is intended for. Access is read-only and used at low, human-scale
+request rates for a single personal digest (non-commercial).
+
 ## AI抽出を使う (Week 2)
 
 `kizashi-enrich` は収集済み記事を **Claude Sonnet 4.6** に渡し、日本語タイトル訳・
