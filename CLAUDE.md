@@ -4,6 +4,28 @@
 
 ---
 
+## ⚠️ 環境と運用フロー(作業前に必ず確認)
+
+このリポジトリは **golde=開発 / root=本番** の2面運用。**まず `pwd` で今どちらにいるか確認する。**
+
+| 環境 | パス | 役割 | 稼働中のもの |
+|------|------|------|-------------|
+| 開発 (golde) | `/home/golde/kizashi` | 編集・検証。**LINEは飛ばない**(`.env` に LINE トークン無し) | なし |
+| 本番 (root)  | `/root/kizashi` | 実稼働。**変更は即ライブ** | `kizashi-web`(127.0.0.1:8000)/ cron 収集(3hごと)/ LINEダイジェスト(7・13・20時) |
+
+**開発 → 本番の流れ:**
+1. golde で `~/kizashi` を編集
+2. `bash scripts/push.sh "コミットメッセージ"`(ruff lint/format → commit → GitHub push)
+3. 本番反映は root で `sudo bash /root/kizashi/scripts/deploy.sh`(`git fetch` → `reset --hard origin/main` → `uv sync` → サービス再起動)
+
+- `.env` / `kizashi.db` / `report.html` は `.gitignore` 済み → **環境ごとに独立**。deploy で上書きされない。
+- **データ収集・LINE配信はすべて root(本番)**。golde 側でコマンドを叩いても本番DB・配信には影響しない。
+- スマホからの遠隔操作用 Discord ボットは **root で常駐**し、本番(`/root/kizashi`)を操作する(詳細は DEPLOY.md)。
+
+詳しい手順は `DEPLOY.md` を参照。
+
+---
+
 ## 🎯 プロジェクト概要
 
 **目的**: AI領域の情報を多ソースから自動収集・構造化・要約し、毎朝「今日のAIトレンドダイジェスト」を生成する。最終的に配信・記事ネタの源泉として機能させる。
