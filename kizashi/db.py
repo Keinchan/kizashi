@@ -242,7 +242,7 @@ class Storage:
 
     # --- LINE ダイジェスト ---
 
-    def digest_candidates(self, since_hours: int = 36, limit: int = 80) -> list[sqlite3.Row]:
+    def digest_candidates(self, since_hours: int = 36, limit: int = 20) -> list[sqlite3.Row]:
         """ダイジェスト厳選の候補を返す (直近収集・未通知)。
 
         - ``since_hours`` 以内に収集したアイテムに限定 (当日の新着を狙う)。

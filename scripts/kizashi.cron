@@ -2,8 +2,11 @@
 # Install with: sudo crontab -e  (then paste the line below)
 #
 # cron has a minimal PATH, so use the ABSOLUTE path to uv.
-# 抽出は cron ではなく常駐サービス kizashi-agent-worker (API課金ゼロ) で回す。
+# AIは全件抽出しない。配信時だけ候補20件から3件を厳選・要約する。
 # 詳細は DEPLOY.md を参照。
 
 # Collection every 3 hours (free, no API cost)
 0 */3 * * * cd /root/kizashi && /root/.local/bin/uv run kizashi-daily --no-enrich >> /root/kizashi/run.log 2>&1
+
+# Digest at 07:00, 13:00 and 20:00 (AI is used only for delivery candidates)
+0 7,13,20 * * * cd /root/kizashi && /root/.local/bin/uv run kizashi-digest --candidate-limit 20 --count 3 >> /root/kizashi/run.log 2>&1

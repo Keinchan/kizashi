@@ -1,7 +1,7 @@
 # Kizashi VPS デプロイ / 運用手順 (Linux, root 運用)
 
 本番は **root** ユーザーで動かす。`/root/kizashi` にコードを置き、収集は cron、
-抽出は常駐サービス(定額 claude CLI・API課金ゼロ)、ダッシュボードは systemd で配信する。
+AIはLINE配信時の候補だけに使用し、ダッシュボードは systemd で配信する。
 
 開発は **golde** ユーザーで `~/kizashi` を編集 → GitHub に push → 本番(root)が pull、
 という流れ。収集は無料・無制限、抽出は予算内で価値の高い順に消化する。
@@ -70,21 +70,22 @@ nano .env     # ANTHROPIC_API_KEY=sk-ant-... など
 
 ---
 
-## 2. 抽出の常駐サービス (API課金ゼロ)
+## 2. 使用量を抑えたAIダイジェスト
 
-抽出は API 課金ではなく、**定額の claude CLI にログイン済みの常駐ワーカー**で回す。
-収集 cron が貯めた未処理プールを、スコアの高い順に少しずつ消化し続ける。
+全件のAI抽出は行わない。収集データはすべてSQLiteへ保存し、配信時だけスコア・新しさで上位20件に絞ってから、Claude CLIで3件を厳選・要約する。これを1日3回実行しても、無制限のバックフィルは発生しない。
 
 ```bash
-sudo cp scripts/kizashi-agent-worker.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now kizashi-agent-worker
-journalctl -u kizashi-agent-worker -f      # ログ追尾
+# まず送信せず確認
+uv run kizashi-digest --dry-run --candidate-limit 20 --count 3
 ```
 
-> API キーで抽出したい場合は代わりに cron で
-> `uv run kizashi-enrich --limit 10 && uv run kizashi-report` を毎朝回す方法もある
-> (トップ10抽出で概ね月450〜600円)。常駐ワーカーと併用はしないこと。
+`scripts/kizashi.cron` の2行（3時間ごとの無料収集、7/13/20時のダイジェスト）をrootのcrontabへ登録する。旧構成の常駐ワーカーが動いている場合は停止する。
+
+```bash
+sudo systemctl disable --now kizashi-agent-worker
+```
+
+過去記事を手動で抽出したい場合だけ `uv run kizashi-agent-worker --once --batch 3` を使う。
 
 ---
 
@@ -112,7 +113,7 @@ ssh -L 8080:localhost:8000 root@<VPSのIP>
 ```bash
 uv run kizashi-daily --no-enrich   # 収集だけ(無料)。数百〜千件入るはず
 uv run kizashi-pool                # 未処理プール状況
-systemctl status kizashi-agent-worker kizashi-web
+systemctl status kizashi-web
 ```
 
 ---
@@ -122,11 +123,11 @@ systemctl status kizashi-agent-worker kizashi-web
 | 項目 | コスト |
 |---|---|
 | 収集 (全ソース・3時間ごと) | **無料** (取得量に依存しない) |
-| 抽出 (常駐ワーカー / 定額 claude CLI) | **API課金ゼロ** |
+| AIダイジェスト (配信候補のみ) | Claude Codeの利用枠を消費 |
 | 抽出を API で回す場合 (毎朝トップ10) | 約 450〜600円/月 |
 
 - 収集はいくら貯めても無料。未処理プールに溜め、抽出だけ予算内で消化。
-- 常駐ワーカー方式なら API 課金は発生しない (定額の claude CLI を利用)。
+- 常駐ワーカーは使わず、AI呼び出しを1日3回の配信時だけに限定する。
 - API 方式にする場合は Anthropic Console の月次上限が最終的な安全弁。
 
 ---
@@ -141,6 +142,5 @@ bash scripts/push.sh "変更内容"                 # lint→commit→push
 sudo bash /root/kizashi/scripts/deploy.sh        # pull→sync→サービス再起動
 
 # 状態確認 (root)
-systemctl status kizashi-agent-worker kizashi-web
-journalctl -u kizashi-agent-worker -f
+systemctl status kizashi-web
 ```

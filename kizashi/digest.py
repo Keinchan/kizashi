@@ -19,7 +19,7 @@ import asyncio
 import sys
 
 from . import load_dotenv
-from .config import DIGEST_COUNT
+from .config import DIGEST_CANDIDATE_LIMIT, DIGEST_COUNT
 from .db import DEFAULT_DB_PATH, Storage
 from .log import warn
 from .notifier import LineNotifyError, push
@@ -69,7 +69,10 @@ def _run(args: argparse.Namespace) -> int:
         asyncio.run(_collect_into(args.db, args.hn_limit))
 
     with Storage(args.db) as store:
-        rows = store.digest_candidates(since_hours=args.since_hours)
+        rows = store.digest_candidates(
+            since_hours=args.since_hours,
+            limit=args.candidate_limit,
+        )
         if not rows:
             print(
                 f"直近 {args.since_hours} 時間の未通知候補がありません。"
@@ -140,11 +143,20 @@ def main() -> None:
         "--count", type=int, default=DIGEST_COUNT, help=f"配信件数 (既定{DIGEST_COUNT})"
     )
     parser.add_argument(
+        "--candidate-limit",
+        type=int,
+        default=DIGEST_CANDIDATE_LIMIT,
+        help=f"AI厳選へ渡す候補上限 (既定{DIGEST_CANDIDATE_LIMIT})",
+    )
+    parser.add_argument(
         "--since-hours", type=int, default=36, help="候補とする収集の新しさ (既定36時間)"
     )
     parser.add_argument("--hn-limit", type=int, default=100, help="--collect時のHN取得上限")
     parser.add_argument("--db", default=str(DEFAULT_DB_PATH), help="SQLite DBパス")
     args = parser.parse_args()
+
+    if args.count < 1 or args.candidate_limit < args.count:
+        parser.error("--count は1以上、--candidate-limit は --count 以上にしてください")
 
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):

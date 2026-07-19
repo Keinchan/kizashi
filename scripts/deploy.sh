@@ -22,16 +22,18 @@ UV="$(command -v uv || echo /root/.local/bin/uv)"
 echo "==> uv sync"
 "$UV" sync
 
-echo "==> systemd サービス再起動"
+echo "==> systemd サービス反映"
 # サービスファイルが更新された場合に備えて反映してから再起動。
-for svc in kizashi-agent-worker kizashi-web; do
+for svc in kizashi-web; do
   if [ -f "scripts/$svc.service" ]; then
     cp "scripts/$svc.service" "/etc/systemd/system/$svc.service"
   fi
 done
 systemctl daemon-reload
-systemctl restart kizashi-agent-worker kizashi-web
+# 旧構成の全件抽出ワーカーは使用量を消費し続けるため停止・無効化する。
+systemctl disable --now kizashi-agent-worker.service 2>/dev/null || true
+systemctl restart kizashi-web
 
 echo ""
-echo "完了: 最新コードを反映し、サービスを再起動しました。"
-systemctl --no-pager --lines=0 status kizashi-agent-worker kizashi-web | grep -E "Active:" || true
+echo "完了: 最新コードを反映し、Webサービスを再起動しました。"
+systemctl --no-pager --lines=0 status kizashi-web | grep -E "Active:" || true

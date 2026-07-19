@@ -32,6 +32,7 @@ def is_fallback_reason(reason: str) -> bool:
     """選定理由がスコア順フォールバック由来か (AI厳選が働かなかった印)。"""
     return reason in _FALLBACK_REASONS
 
+
 _SYSTEM = """あなたはAIトレンド観測ツール「Kizashi」の編集者です。
 今日集まったAI関連の候補記事リストから、日本のAI開発者にとって\
 **今日最も重要な{count}件だけ**を厳選します。
