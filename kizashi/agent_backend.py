@@ -19,6 +19,7 @@ import json
 import re
 import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .db import Storage
 from .enrich import SYSTEM_PROMPT, Extraction, _build_user_content, _to_db_fields
@@ -59,15 +60,26 @@ def agent_available(cmd: str = AGENT_CMD) -> bool:
     return shutil.which(cmd) is not None
 
 
-def run_agent(prompt: str, cmd: str = AGENT_CMD, timeout: int = DEFAULT_TIMEOUT) -> str:
+def run_agent(
+    prompt: str,
+    cmd: str = AGENT_CMD,
+    timeout: int = DEFAULT_TIMEOUT,
+    model: str | None = None,
+) -> str:
     """ヘッドレス CLI エージェントにプロンプトを渡し、標準出力テキストを返す (課金ゼロ)。
 
+    ``model`` にエイリアス (``"haiku"`` / ``"opus"`` 等) か正式IDを渡すと
+    ``claude --model`` でモデルを切り替える (大量処理はHaiku・深い解析はOpus等)。
     非0終了・タイムアウト・未インストールは AgentError を送出する。
     抽出以外 (LINEダイジェストの厳選/要約など) からも共通で使う汎用呼び出し口。
     """
+    argv = [cmd, "-p"]
+    if model:
+        argv += ["--model", model]
+    argv.append(prompt)
     try:
         proc = subprocess.run(
-            [cmd, "-p", prompt],
+            argv,
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -114,18 +126,28 @@ def _coerce(data: dict) -> dict:
     return out
 
 
-def extract_via_claude(row, cmd: str = AGENT_CMD, timeout: int = DEFAULT_TIMEOUT) -> Extraction:
+def extract_via_claude(
+    row,
+    cmd: str = AGENT_CMD,
+    timeout: int = DEFAULT_TIMEOUT,
+    model: str | None = None,
+) -> Extraction:
     """記事1件を CLI エージェントで構造化抽出して Extraction を返す。
 
     失敗 (非0終了・タイムアウト・JSON不正・スキーマ不一致) は AgentError を送出。
     """
     prompt = _build_prompt(row)
-    stdout = run_agent(prompt, cmd=cmd, timeout=timeout)
+    stdout = run_agent(prompt, cmd=cmd, timeout=timeout, model=model)
     data = _coerce(_parse_json(stdout))
     try:
         return Extraction(**data)
     except (TypeError, ValueError) as e:  # pydantic ValidationError は ValueError 派生
         raise AgentError(f"スキーマ不一致: {e}") from e
+
+
+def _label(model: str | None) -> str:
+    """保存に残すモデル表記 (どのティアで抽出したか後から分かるように)。"""
+    return f"claude-code ({model})" if model else MODEL_LABEL
 
 
 def enrich_store_local(
@@ -134,10 +156,15 @@ def enrich_store_local(
     verbose: bool = True,
     cmd: str = AGENT_CMD,
     timeout: int = DEFAULT_TIMEOUT,
+    model: str | None = None,
+    workers: int = 1,
 ) -> dict:
     """未処理記事をローカルCLIエージェントで抽出・保存し、統計を返す (課金ゼロ)。
 
     価値の高い(スコア順)未処理アイテムから優先的にバックフィルする。
+    ``workers>1`` で抽出 (遅いLLM呼び出し) をスレッド並列化し、DB書き込みは
+    メインスレッドだけで行う (sqlite の単一接続をスレッド間共有しない=安全)。
+    ``model`` でティアを指定 (大量バックフィルは ``"haiku"`` 推奨)。
     """
     rows = store.get_unenriched(limit, order="score")
     stats = {"processed": 0, "failed": 0}
@@ -146,23 +173,45 @@ def enrich_store_local(
             print("未処理の記事はありません。")
         return stats
 
+    label = _label(model)
     if verbose:
-        print(f"抽出開始: {len(rows)} 件を {MODEL_LABEL} で処理します...\n")
+        print(f"抽出開始: {len(rows)} 件を {label} × {workers}並列 で処理します...\n")
 
-    for n, row in enumerate(rows, 1):
-        try:
-            ext = extract_via_claude(row, cmd=cmd, timeout=timeout)
-        except AgentError as e:
-            store.record_enrich_failure(row["id"], repr(e))
+    def _save(n: int, row, ext_or_err) -> None:
+        if isinstance(ext_or_err, AgentError):
+            store.record_enrich_failure(row["id"], repr(ext_or_err))
             stats["failed"] += 1
             if verbose:
-                print(f"  [{n}/{len(rows)}] [!] 失敗 ({row['id']}): {e}")
-            continue
-
-        store.save_enrichment(row["id"], _to_db_fields(ext), MODEL_LABEL)
+                print(f"  [{n}/{len(rows)}] [!] 失敗 ({row['id']}): {ext_or_err}")
+            return
+        store.save_enrichment(row["id"], _to_db_fields(ext_or_err), label)
         stats["processed"] += 1
         if verbose:
-            note = (ext.agent_note or "").replace("\n", " ")[:50]
-            print(f"  [{n}/{len(rows)}] ★{ext.importance} {ext.title_ja[:34]}  — {note}")
+            note = (ext_or_err.agent_note or "").replace("\n", " ")[:50]
+            print(
+                f"  [{n}/{len(rows)}] ★{ext_or_err.importance} {ext_or_err.title_ja[:34]}  — {note}"
+            )
 
+    if workers <= 1:
+        for n, row in enumerate(rows, 1):
+            try:
+                res = extract_via_claude(row, cmd=cmd, timeout=timeout, model=model)
+            except AgentError as e:
+                res = e
+            _save(n, row, res)
+        return stats
+
+    # 並列: 抽出を投げ、完了順に **メインスレッドで** DB 保存する。
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {
+            ex.submit(extract_via_claude, row, cmd=cmd, timeout=timeout, model=model): row
+            for row in rows
+        }
+        for n, fut in enumerate(as_completed(futs), 1):
+            row = futs[fut]
+            try:
+                res = fut.result()
+            except AgentError as e:
+                res = e
+            _save(n, row, res)
     return stats

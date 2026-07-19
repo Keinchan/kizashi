@@ -6,8 +6,12 @@
 回す:
 
   A. バックフィル — 未処理プールをスコア順に構造化抽出 (enrich_store_local)。夜の主戦。
-  B. 週次トレンド解析 — 抽出済みデータを集約し AI に週次メモを書かせる (1晩1回)。
-  C. 新ソース調査 — まだ収集していない AI 情報源の候補を AI に挙げさせる (1晩1回)。
+     大量・単純なので **Haiku を並列** (--workers) で高速に回す。
+  B. 週次トレンド解析 — 抽出済みデータを集約し AI に週次メモを書かせる (1晩1回)。**Opus**。
+  C. 新ソース調査 — まだ収集していない AI 情報源の候補を AI に挙げさせる (1晩1回)。**Opus**。
+
+モデル使い分け (--backfill-model / --analysis-model) と並列エージェント (--workers) で
+「速い・枠に優しい抽出」と「深い解析」を両立する。
 
 安全網 (分母=プラン上限が非公開なため %計算がズレても暴走させない):
   - ランプ天井 (usage.ramp_ceiling) で細かく制御。
@@ -73,7 +77,7 @@ def _fetch_enriched(store: Storage, days: int, limit: int) -> list:
     ).fetchall()
 
 
-def job_weekly_analysis(store: Storage, timeout: int = 600) -> bool:
+def job_weekly_analysis(store: Storage, model: str = "opus", timeout: int = 600) -> bool:
     """抽出済みデータから週次トレンドメモを生成し night_report.md に追記する。"""
     rows = _fetch_enriched(store, days=7, limit=120)
     if len(rows) < 5:
@@ -100,7 +104,7 @@ def job_weekly_analysis(store: Storage, timeout: int = 600) -> bool:
         f"# 対象アイテム ({len(rows)}件)\n{corpus}\n"
     )
     try:
-        body = run_agent(prompt, timeout=timeout)
+        body = run_agent(prompt, timeout=timeout, model=model)
     except AgentError as e:
         warn(f"[B] 週次解析に失敗: {e}")
         return False
@@ -119,7 +123,7 @@ _KNOWN_SOURCES = (
 )
 
 
-def job_source_research(timeout: int = 600) -> bool:
+def job_source_research(model: str = "opus", timeout: int = 600) -> bool:
     """まだ収集していないAI情報源の候補を挙げさせ source_candidates.md に追記する。"""
     prompt = (
         "あなたはAIトレンド観測ツール Kizashi のリサーチャーです。'兆し'(主流化前の"
@@ -135,7 +139,7 @@ def job_source_research(timeout: int = 600) -> bool:
         "確度の高い順に最大12件。既知ソースの重複は除外。"
     )
     try:
-        body = run_agent(prompt, timeout=timeout)
+        body = run_agent(prompt, timeout=timeout, model=model)
     except AgentError as e:
         warn(f"[C] 新ソース調査に失敗: {e}")
         return False
@@ -243,13 +247,13 @@ def run(args: argparse.Namespace) -> int:
 
             # ジョブ選択: B → C → A(バックフィル)。B/C は1晩1回。
             if not b_done:
-                print("  [B] 週次トレンド解析を実行")
-                job_weekly_analysis(store)
+                print(f"  [B] 週次トレンド解析を実行 (model={args.analysis_model})")
+                job_weekly_analysis(store, model=args.analysis_model)
                 self_spent += B_COST_EST
                 b_done = True
             elif not c_done:
-                print("  [C] 新ソース調査を実行")
-                job_source_research()
+                print(f"  [C] 新ソース調査を実行 (model={args.analysis_model})")
+                job_source_research(model=args.analysis_model)
                 self_spent += C_COST_EST
                 c_done = True
             else:
@@ -261,9 +265,18 @@ def run(args: argparse.Namespace) -> int:
                     break
                 room = _headroom_items(snap, ceiling, effective_used, tpi)
                 take = max(1, min(args.chunk, args.max_items - processed, room or args.chunk))
-                print(f"  [A] バックフィル {take}件 (余裕 ~{room}件相当)")
+                print(
+                    f"  [A] バックフィル {take}件 "
+                    f"(model={args.backfill_model} × {args.workers}並列, 余裕 ~{room}件相当)"
+                )
                 before = snapshot().block_used
-                stats = enrich_store_local(store, take, verbose=False)
+                stats = enrich_store_local(
+                    store,
+                    take,
+                    verbose=False,
+                    model=args.backfill_model,
+                    workers=args.workers,
+                )
                 processed += stats["processed"] + stats["failed"]
                 self_spent += (stats["processed"] + stats["failed"]) * tpi
                 # 実測が取れたら 1件あたりトークンを較正 (以降の見積り精度を上げる)。
@@ -291,8 +304,21 @@ def main() -> None:
     p.add_argument("--db", default=str(DEFAULT_DB_PATH), help="SQLite DBパス")
     p.add_argument("--max-items", type=int, default=400, help="バックフィル上限件数 (既定400)")
     p.add_argument("--max-runtime", type=int, default=240, help="実行時間の上限(分, 既定240=4h)")
-    p.add_argument("--chunk", type=int, default=5, help="1ループのバックフィル件数 (既定5)")
-    p.add_argument("--pace", type=int, default=5, help="ループ間スリープ秒 (既定5)")
+    p.add_argument("--chunk", type=int, default=12, help="1ループのバックフィル件数 (既定12)")
+    p.add_argument("--pace", type=int, default=3, help="ループ間スリープ秒 (既定3)")
+    p.add_argument(
+        "--workers", type=int, default=6, help="バックフィルの並列エージェント数 (既定6)"
+    )
+    p.add_argument(
+        "--backfill-model",
+        default="haiku",
+        help="A(バックフィル)のモデル。大量・単純なので既定 haiku (速い/枠に優しい)",
+    )
+    p.add_argument(
+        "--analysis-model",
+        default="opus",
+        help="B(週次解析)/C(新ソース調査)のモデル。既定 opus (深い判断)",
+    )
     p.add_argument("--no-b", action="store_true", help="週次解析(B)をスキップ")
     p.add_argument("--no-c", action="store_true", help="新ソース調査(C)をスキップ")
     p.add_argument("--dry-run", action="store_true", help="何もせず今の判断(天井/計画)だけ表示")

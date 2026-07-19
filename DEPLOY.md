@@ -95,8 +95,13 @@ sudo systemctl disable --now kizashi-agent-worker
 `kizashi-night` が `claude -p` 経由(課金ゼロ)で使い、3ジョブを回す:
 
 - **A. バックフィル** — 未処理プール(現状2.7万件)をスコア順に構造化抽出。夜の主戦。
-- **B. 週次トレンド解析** — 抽出済みデータを集約し AI が週次メモを `night_report.md` に生成。
-- **C. 新ソース調査** — 未収集のAI情報源候補を AI が `source_candidates.md` に列挙。
+  大量・単純なので **Haiku を並列**(既定6並列)で高速に回す。
+- **B. 週次トレンド解析** — 抽出済みデータを集約し **Opus** が週次メモを `night_report.md` に生成。
+- **C. 新ソース調査** — 未収集のAI情報源候補を **Opus** が `source_candidates.md` に列挙。
+
+モデル使い分けと並列で速度と質を両立: `--backfill-model haiku`(既定)/ `--analysis-model opus`
+(既定)/ `--workers 6`(既定)。並列は抽出(LLM呼び出し)だけで、DB書き込みはメインスレッド
+直列なので sqlite 競合なし。
 
 **枠制御**: 使用量は `~/.claude` のトランスクリプトから自前算出。reset に近いほど天井を
 上げるランプ(60分前50% / 15分前80% / 5分前90%)に当たるまで回す。分母(プランの5h上限)は
