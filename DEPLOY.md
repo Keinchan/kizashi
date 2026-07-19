@@ -89,6 +89,36 @@ sudo systemctl disable --now kizashi-agent-worker
 
 ---
 
+## 2.5 夜間ジョブ (kizashi-night) — 捨てられる枠を使い切る
+
+深夜は Claude Code のサブスク枠(5時間ローリング)が未使用のまま捨てられる。これを
+`kizashi-night` が `claude -p` 経由(課金ゼロ)で使い、3ジョブを回す:
+
+- **A. バックフィル** — 未処理プール(現状2.7万件)をスコア順に構造化抽出。夜の主戦。
+- **B. 週次トレンド解析** — 抽出済みデータを集約し AI が週次メモを `night_report.md` に生成。
+- **C. 新ソース調査** — 未収集のAI情報源候補を AI が `source_candidates.md` に列挙。
+
+**枠制御**: 使用量は `~/.claude` のトランスクリプトから自前算出。reset に近いほど天井を
+上げるランプ(60分前50% / 15分前80% / 5分前90%)に当たるまで回す。分母(プランの5h上限)は
+非公開なので**過去ピーク枠から自動キャリブレーション**(=控えめ・安全側)。正確に攻めたい
+なら `.env` の `CLAUDE_5H_TOKEN_BUDGET` に実上限を、昼を守るなら `CLAUDE_WEEKLY_TOKEN_BUDGET`
+を設定する。加えて `--max-items` / `--max-runtime` のハードキャップで暴走を防ぐ。
+
+```bash
+uv run kizashi-night --dry-run     # 何もせず「今なら何をどれだけ回すか」を確認
+```
+
+cron 登録(`scripts/kizashi.cron` の3行目、01:00 起動):
+
+```cron
+0 1 * * * cd /root/kizashi && /root/.local/bin/uv run kizashi-night --max-items 400 --max-runtime 240 >> /root/kizashi/run.log 2>&1
+```
+
+生成物 `night_report.md` / `source_candidates.md` は `.gitignore` 済み(環境ごとに独立、
+deploy で上書きされない)。
+
+---
+
 ## 3. ダッシュボード配信 (127.0.0.1 のみ / 外部非公開)
 
 `kizashi-web` サービスがローカル限定(127.0.0.1:8000)で配信する。

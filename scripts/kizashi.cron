@@ -10,3 +10,8 @@
 
 # Digest at 07:00, 13:00 and 20:00 (AI is used only for delivery candidates)
 0 7,13,20 * * * cd /root/kizashi && /root/.local/bin/uv run kizashi-digest --candidate-limit 20 --count 3 >> /root/kizashi/run.log 2>&1
+
+# Nightly A/B/C jobs: burn otherwise-wasted Claude Code subscription tokens (free).
+# Ramp ceiling rises toward each 5h-window reset (60m→50% / 15m→80% / 5m→90%).
+# Hard caps: max 400 backfill items, 4h runtime. Tune with CLAUDE_5H_TOKEN_BUDGET in .env.
+0 1 * * * cd /root/kizashi && /root/.local/bin/uv run kizashi-night --max-items 400 --max-runtime 240 >> /root/kizashi/run.log 2>&1

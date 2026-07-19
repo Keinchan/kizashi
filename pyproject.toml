@@ -24,6 +24,7 @@ kizashi-rising = "kizashi.rising:main"
 kizashi-agent-worker = "kizashi.agent_worker:main"
 kizashi-digest = "kizashi.digest:main"
 kizashi-doctor = "kizashi.doctor:main"
+kizashi-night = "kizashi.night:main"
 
 [dependency-groups]
 dev = [

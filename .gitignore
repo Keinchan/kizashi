@@ -15,6 +15,9 @@ dist/
 *.db-journal
 *.sqlite
 report.html
+rising.html
+night_report.md
+source_candidates.md
 
 # OS / editor
 .DS_Store
