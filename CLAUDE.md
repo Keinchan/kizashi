@@ -20,7 +20,9 @@
 
 - `.env` / `kizashi.db` / `report.html` は `.gitignore` 済み → **環境ごとに独立**。deploy で上書きされない。
 - **データ収集・LINE配信はすべて root(本番)**。golde 側でコマンドを叩いても本番DB・配信には影響しない。
-- スマホからの遠隔操作用 Discord ボットは **root で常駐**し、本番(`/root/kizashi`)を操作する(詳細は DEPLOY.md)。
+- スマホからの遠隔操作用 Discord ブリッジ(`claude-discord-bot.service`, 実体は `/home/golde/claude-discord/bot.py`)は
+  **golde で常駐**し、**開発環境(`/home/golde/kizashi`)を操作する**。用途は「開発環境で作り込み → 出来たら本番に上げる」であり、
+  ブリッジから本番を直接触ることはしない(本番反映は上記 push → deploy の手順で人間が行う)。
 
 詳しい手順は `DEPLOY.md` を参照。
 
