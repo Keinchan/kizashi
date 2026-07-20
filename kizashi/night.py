@@ -13,6 +13,11 @@
 モデル使い分け (--backfill-model / --analysis-model) と並列エージェント (--workers) で
 「速い・枠に優しい抽出」と「深い解析」を両立する。
 
+天井に当たっても **すぐ終了せず、次の枠リセットまで待って再開** する (実行時間が残って
+いる限り)。夜に自分の対話で枠を使い切った直後に cron 起動しても、リセット後に空く枠を
+拾えるようにするため。終了するのは「実行時間切れ」「プール空」「件数上限」「週次ガード」
+「実行時間内に次のリセットが来ない」のいずれか。
+
 安全網 (分母=プラン上限が非公開なため %計算がズレても暴走させない):
   - ランプ天井 (usage.ramp_ceiling) で細かく制御。
   - ``--max-items`` / ``--max-runtime`` のハードキャップ。
@@ -46,6 +51,7 @@ DEFAULT_TOKENS_PER_ITEM = int(os.getenv("CLAUDE_TOKENS_PER_ITEM") or 15_000)
 B_COST_EST = 40_000  # 週次解析1回の概算消費。
 C_COST_EST = 50_000  # 新ソース調査1回の概算消費。
 WEEKLY_CEILING = 0.85  # 週次上限ガード (env 設定時のみ発火)。
+RESET_MARGIN_SEC = 90  # 枠リセットの少し後に起きるための余裕 (境界での取りこぼし防止)。
 
 NIGHT_REPORT = "night_report.md"
 SOURCE_CANDIDATES = "source_candidates.md"
@@ -197,6 +203,7 @@ def run(args: argparse.Namespace) -> int:
     deadline = time.monotonic() + args.max_runtime * 60
     processed = 0
     last_chat_report = 0  # 直近でチャットへ進捗を出した累計件数。
+    waits = 0  # 天井到達でリセット待ちした回数。
     stop_reason = "完了"
     b_done = args.no_b
     c_done = args.no_c
@@ -261,14 +268,30 @@ def run(args: argparse.Namespace) -> int:
             if _weekly_blocked(snap):
                 stop_reason = "週次上限ガード"
                 break
-            if effective_used >= ceiling * snap.budget:
-                stop_reason = f"枠の天井到達 ({_pct(effective_used / snap.budget)})"
-                print(f"  → {stop_reason}. 停止。")
-                break
             if time.monotonic() >= deadline:
                 stop_reason = "実行時間の上限"
                 print("  → 実行時間の上限に到達. 停止。")
                 break
+            if effective_used >= ceiling * snap.budget:
+                # 天井到達。ここで終了せず、実行時間が残っていれば **次のリセットまで待って
+                # 再開** する。夜に自分が枠を使い切った直後に起動しても、リセット後に空く枠を
+                # 拾えるようにするため (待たずに終了すると、その晩まるごと無駄になる)。
+                used_pct = _pct(effective_used / snap.budget)
+                wait_s = snap.minutes_to_reset * 60 + RESET_MARGIN_SEC
+                left = deadline - time.monotonic()
+                if left <= wait_s:
+                    stop_reason = f"枠の天井到達 ({used_pct}) / 実行時間内に次のリセットが来ない"
+                    print(f"  → {stop_reason}. 停止。")
+                    break
+                waits += 1
+                reset_hm = snap.reset_at.astimezone().strftime("%H:%M")
+                print(
+                    f"  ⏸ 天井到達 ({used_pct})。{reset_hm} のリセットまで"
+                    f" {wait_s / 60:.0f}分 待機して再開します。"
+                )
+                to_chat(f"⏸ 枠の天井 ({used_pct}) に到達 — {reset_hm} のリセットまで待機します")
+                time.sleep(wait_s)
+                continue
 
             # ジョブ選択: B → C → A(バックフィル)。B/C は1晩1回。
             if not b_done:
@@ -331,11 +354,11 @@ def run(args: argparse.Namespace) -> int:
             time.sleep(args.pace)
 
         final = snapshot()
-        print(f"[kizashi-night] 終了。バックフィル {processed}件 処理。")
+        print(f"[kizashi-night] 終了。バックフィル {processed}件 処理 (リセット待ち {waits}回)。")
         to_chat(
             f"✅ **kizashi-night 終了** — {stop_reason}\n"
             f"バックフィル {processed}件 / B={'済' if b_done and not args.no_b else '—'} "
-            f"C={'済' if c_done and not args.no_c else '—'}\n"
+            f"C={'済' if c_done and not args.no_c else '—'} / リセット待ち {waits}回\n"
             f"抽出済み計 {pool['enriched']}件 / 残り {pool['pending']}件 / "
             f"枠 {_pct(final.used_frac)}\n"
             f"(詳細ログは run.log、成果物は night_report.md / source_candidates.md)"
